@@ -1,0 +1,8 @@
+# powerboat-cross: the Powerboat cross image (Dockerfile in this folder, tag
+# powerboat-cross-base) plus static libopus for WebM/Opus audio (src/opus.rs).
+# Build (WSL): sg docker -c "docker build -t powerboat-cross -f Dockerfile.construct ."
+FROM powerboat-cross-base
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libopus-dev:arm64 \
+ && rm -rf /var/lib/apt/lists/* \
+ && ls -l /usr/lib/aarch64-linux-gnu/libopus.a

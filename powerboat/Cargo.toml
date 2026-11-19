@@ -1,0 +1,50 @@
+[package]
+name = "powerboat"
+version = "0.1.0"
+edition = "2021"
+description = "Browser-free HTML5 game runtime (RPG Maker MV/MZ, Construct 2/3): V8 (deno_core) + SDL2 + GLES, native web APIs"
+publish = false
+
+[dependencies]
+deno_core = "0.412"
+deno_error = "0.7"
+tokio = { version = "1", features = ["rt", "time"] }
+serde = { version = "1", features = ["derive"] }
+# The device's own libSDL2-2.0.so.0 at run time (dynamic link, no bundling).
+sdl2 = { version = "0.38", default-features = false }
+glow = "0.18"
+# PNG + JPEG decode for Image / MV bitmaps (MV's .rpgmvp decrypts to PNG in JS).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+# Canvas 2D rasterizer and font outlines (text as paths: fillText and strokeText alike).
+tiny-skia = "0.11"
+ttf-parser = "0.25"
+# Audio decoding (ogg/vorbis for MV, mkv demux for WebM later); pure Rust.
+symphonia = { version = "0.6", default-features = false, features = ["opt-simd", "ogg", "vorbis", "mkv", "isomp4", "aac", "mp3", "wav", "pcm"] }
+# H.264 for MP4 <video> (Construct exports often ship MP4 only); Cisco OpenH264 built from source.
+openh264 = { version = "0.9", default-features = false, features = ["source"] }
+# Row bands of large Canvas 2D blits and fills on the other cores (canvas.rs).
+rayon = "1"
+# libpmhwdec (hardware video decoding, GPL-2.0-or-later) is dlopen()ed at run time, never linked (src/hwdec.rs).
+libloading = "0.8"
+# deno_core's V8, named here only so its build features can be chosen (same version as deno_core's).
+v8 = { version = "=150.4.0", default-features = false }
+
+[build-dependencies]
+cc = "1"
+
+[features]
+# V8 with 32-bit compressed pointers (as Chrome ships). Prebuilt only for x86_64 at this version;
+# aarch64 needs a V8 source build.
+ptrcomp = ["v8/v8_enable_pointer_compression"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+debug = false
+panic = "unwind"
+
+# Fast iteration on the PC: no LTO, keep debug info.
+[profile.dev]
+opt-level = 1
+debug = 1
