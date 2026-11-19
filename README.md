@@ -1,10 +1,5 @@
 # Powerboat
 
-Formerly RMMV Native (crate and binary `rmmv-native`, the Construct copy `c3native`), renamed 2026-11-19 with no
-old-name fallbacks: environment variables `RMMV_*` are now `POWERBOAT_*`, log lines start with `[powerboat]`, the
-code cache folder is `<game>/.powerboat-cache`, transcoded videos are `<name>.powerboat.webm`, and test installs
-live in `<ports>/.powerboat`.
-
 The HTML5 runtime for PortMaster handhelds: V8 (JIT) plus native implementations of only the web APIs
 HTML5 games use (WebGL 1 on GLES, Canvas 2D, Web Audio, WebM and MP4 video, a page DOM, the NW.js/Node
 slice), in one Rust binary. It began as a browser-free RPG Maker MV runtime for OMORI. Since 2026-11-01 it
