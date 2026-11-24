@@ -1321,6 +1321,9 @@ fn mode() -> Defer {
 }
 const FALLBACK_FLUSHES: f64 = 2.0;
 const FALLBACK_SECS: f64 = 3.0;
+/// POWERBOAT_C2D_FALLBACK=0: no auto fallback (a page that waits in bursts, e.g. text drawn into its canvases on
+/// clicks, keeps the drawing thread for the rest of its frames).
+static FALLBACK: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("POWERBOAT_C2D_FALLBACK").map_or(true, |v| v != "0"));
 /// Whether the 2D page presenter shows frames one behind (op_c2d_present_upload).
 pub fn pipelined() -> bool {
     mode() == Defer::On
@@ -1563,6 +1566,14 @@ impl C2d {
             self.send();
         }
     }
+    /// Sends what is queued to the drawing thread without waiting (deferred mode): a page that presents with
+    /// WebGL has no 2D present to do it at the frame's end, and its next read would find the whole frame's drawing
+    /// still queued (and wait for all of it).
+    pub fn kick(&mut self) {
+        if mode() == Defer::On {
+            self.send();
+        }
+    }
     /// Hands the queue to the drawing thread (started on first use).
     fn send(&mut self) {
         if self.queue.is_empty() {
@@ -1607,7 +1618,7 @@ impl C2d {
             }
             WAIT_NS.fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
         }
-        if pending && mode() == Defer::On {
+        if pending && mode() == Defer::On && *FALLBACK {
             FLUSHES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             // Everything is drawn and the thread is idle here: switching off is safe.
             let w = self.window.get_or_insert((std::time::Instant::now(), 0, 0));
@@ -2800,6 +2811,12 @@ pub fn op_c2d_create(state: &mut OpState, w: u32, h: u32) -> u32 {
     let id = state.borrow_mut::<App>().canvases.alloc_id();
     record(state, Cmd::Create { id, w, h });
     id
+}
+/// Queued Canvas 2D drawing goes to the drawing thread now (see C2d::kick).
+#[op2(fast)]
+pub fn op_c2d_kick(state: &mut OpState) {
+    let _t = OpTimer::start();
+    state.borrow_mut::<App>().canvases.kick();
 }
 #[op2(fast)]
 pub fn op_c2d_free(state: &mut OpState, id: u32) {

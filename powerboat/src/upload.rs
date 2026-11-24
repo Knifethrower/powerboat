@@ -4,6 +4,7 @@
 //! and draws with that texture. The JS thread no longer copies 0.7 MB per frame through the driver
 //! (TrimUI Smart Pro plaza: memcpy + driver ioctls were ~6 % of its time). POWERBOAT_C2D_GPU_UPLOAD=0, or a
 //! driver that refuses the shared context, keeps the copy in the frame buffer path.
+static PAGE_LINEAR: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("POWERBOAT_HTML").is_ok_and(|v| v == "1") || std::env::var("POWERBOAT_PAGE_FILTER").is_ok_and(|v| v == "linear"));
 
 use glow::HasContext;
 use std::ffi::{c_void, CStr};
@@ -186,7 +187,10 @@ impl Uploader {
                     }
                     let t = gl.create_texture().ok()?;
                     gl.bind_texture(glow::TEXTURE_2D, Some(t));
-                    for (k, v) in [(glow::TEXTURE_MIN_FILTER, glow::NEAREST), (glow::TEXTURE_MAG_FILTER, glow::NEAREST), (glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE), (glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE)] {
+                    // HTML pages (POWERBOAT_HTML=1) are text and photos, often scaled by a non-whole factor: linear.
+                    // Other 2D pages keep nearest (pixel art).
+                    let f = if *PAGE_LINEAR { glow::LINEAR } else { glow::NEAREST };
+                    for (k, v) in [(glow::TEXTURE_MIN_FILTER, f), (glow::TEXTURE_MAG_FILTER, f), (glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE), (glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE)] {
                         gl.tex_parameter_i32(glow::TEXTURE_2D, k, v as i32);
                     }
                     gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 4);

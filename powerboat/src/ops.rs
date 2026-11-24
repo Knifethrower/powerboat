@@ -292,6 +292,18 @@ pub fn op_powerboat_rename(#[string] from: String, #[string] to: String) -> Stri
     }
 }
 
+/// Fills `out` from the OS random source (/dev/urandom), for crypto.getRandomValues. One file kept open.
+#[op2(fast)]
+pub fn op_powerboat_random_bytes(#[buffer] out: &mut [u8]) -> bool {
+    use std::io::Read;
+    static URANDOM: std::sync::Mutex<Option<std::fs::File>> = std::sync::Mutex::new(None);
+    let mut f = URANDOM.lock().unwrap_or_else(|e| e.into_inner());
+    if f.is_none() {
+        *f = std::fs::File::open("/dev/urandom").ok();
+    }
+    f.as_mut().is_some_and(|f| f.read_exact(out).is_ok())
+}
+
 /// An environment variable, empty if unset (runtime switches for JS).
 #[op2]
 #[string]

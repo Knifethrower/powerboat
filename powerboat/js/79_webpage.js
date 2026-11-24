@@ -171,7 +171,8 @@
     const parse = (html, parent) => {
       const doc = g.document, stack = [parent];
       const top = () => stack[stack.length - 1];
-      const re = /<!--([\s\S]*?)-->|<\/([a-zA-Z][\w:-]*)\s*>|<([a-zA-Z][\w:-]*)((?:\s+[^\s"'>\/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*(\/?)>|([^<]+|<)/g;
+      // As browsers, an attribute may follow a quoted value with no space between (Cookie Clicker: ...}"id="upgrade0").
+      const re = /<!--([\s\S]*?)-->|<\/([a-zA-Z][\w:-]*)\s*>|<([a-zA-Z][\w:-]*)((?:(?:\s+|(?<=["']))[^\s"'>\/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*(\/?)>|([^<]+|<)/g;
       let m;
       while ((m = re.exec(html))) {
         if (m[1] !== undefined) top().appendChild(doc.createComment(m[1]));
@@ -275,6 +276,8 @@
   if (Deno.core.ops.op_powerboat_env("POWERBOAT_WEBPAGE") === "1") {
     const inDocument = (el) => { for (let n = el; n; n = n.parentNode) if (n === g.document.body) return true; return false; };
     const pageCanvas = () => {
+      // An HTML page (87_paint.js) is drawn into its own canvas.
+      if (__powerboat.htmlPageCanvas) return __powerboat.htmlPageCanvas;
       let best = null;
       for (const c of g.document.getElementsByTagName("canvas"))
         if (c._powerboatCanvasId && inDocument(c) && (!best || c.width * c.height > best.width * best.height)) best = c;
@@ -303,14 +306,17 @@
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
       tex = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, tex);
-      // The window may scale it: nearest keeps pixel art crisp.
-      for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+      // The window may scale it: nearest keeps pixel art crisp; HTML pages (text, photos) scale linearly.
+      const f = Deno.core.ops.op_powerboat_env("POWERBOAT_HTML") === "1" ? gl.LINEAR : gl.NEAREST;
+      for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, f], [gl.TEXTURE_MAG_FILTER, f], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
     };
     const present = () => {
+      if (__powerboat.beforePresent) __powerboat.beforePresent();
+      if (__powerboat.htmlGL) return; // drawn with WebGL: the runtime presents that canvas itself
       // A page that made its own WebGL context presents itself.
       const own = __powerboat.mainCanvas && (typeof __powerboat.mainCanvas === "function" ? __powerboat.mainCanvas() : __powerboat.mainCanvas);
       // (Not a detached one: Phaser's feature check makes a WebGL canvas and drops it.)
-      if (!started && own && inDocument(own)) return;
+      if (!started && own && inDocument(own) && !__powerboat.htmlPageCanvas) return;
       const c = pageCanvas();
       if (!c || !c.width || !c.height) return;
       started = true;
@@ -374,6 +380,8 @@
   // Hypnospace Outlaw stopped there.)
   const baseBoot = __powerboat.bootHtml;
   __powerboat.bootHtml = (htmlPath) => {
+    // HTML pages (85_html.js) build the whole body themselves.
+    if (Deno.core.ops.op_powerboat_env("POWERBOAT_HTML") === "1") return baseBoot(htmlPath);
     const html = __powerboat.readText(htmlPath);
     const body = /<body[^>]*>([\s\S]*)<\/body>/i.exec(html);
     if (body) {

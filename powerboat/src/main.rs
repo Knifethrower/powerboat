@@ -48,6 +48,7 @@ const ENV_JS: &[(&str, &str)] = &[
     ("powerboat:20_dom.js", include_str!("../js/20_dom.js")),
     ("powerboat:30_canvas2d.js", include_str!("../js/30_canvas2d.js")),
     ("powerboat:40_web.js", include_str!("../js/40_web.js")),
+    ("powerboat:41_crypto.js", include_str!("../js/41_crypto.js")),
     ("powerboat:50_audio.js", include_str!("../js/50_audio.js")),
     ("powerboat:60_node.js", include_str!("../js/60_node.js")),
     ("powerboat:70_video.js", include_str!("../js/70_video.js")),
@@ -57,6 +58,12 @@ const ENV_JS: &[(&str, &str)] = &[
     ("powerboat:82_forms.js", include_str!("../js/82_forms.js")),
     ("powerboat:83_phaser.js", include_str!("../js/83_phaser.js")),
     ("powerboat:84_rmmz.js", include_str!("../js/84_rmmz.js")),
+    ("powerboat:85_html.js", include_str!("../js/85_html.js")),
+    ("powerboat:86_layout.js", include_str!("../js/86_layout.js")),
+    ("powerboat:86g_glctx.js", include_str!("../js/86g_glctx.js")),
+    ("powerboat:86c_cursors.js", include_str!("../js/86c_cursors.js")),
+    ("powerboat:87_paint.js", include_str!("../js/87_paint.js")),
+    ("powerboat:88_media.js", include_str!("../js/88_media.js")),
 ];
 
 extension!(
@@ -80,6 +87,7 @@ extension!(
         ops::op_powerboat_remove,
         ops::op_powerboat_rename,
         ops::op_powerboat_env,
+        ops::op_powerboat_random_bytes,
         ops::op_json_one_byte,
         ops::op_c3_strip_frames,
         ops::op_powerboat_read_range,
@@ -233,6 +241,7 @@ extension!(
         gl::op_c2d_present_upload,
         gl::op_c2d_present_page,
         canvas::op_c2d_create,
+        canvas::op_c2d_kick,
         canvas::op_c2d_free,
         canvas::op_c2d_resize,
         canvas::op_c2d_bytes,
