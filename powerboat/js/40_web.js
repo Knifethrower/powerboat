@@ -117,6 +117,8 @@
       this._headers = {}; this._mime = null; this._ctype = "";
     }
     static get UNSENT() { return 0; } static get OPENED() { return 1; } static get HEADERS_RECEIVED() { return 2; } static get LOADING() { return 3; } static get DONE() { return 4; }
+    // On every request too, as in browsers: three.js's JSONLoader waits for `readyState === xhr.DONE`.
+    get UNSENT() { return 0; } get OPENED() { return 1; } get HEADERS_RECEIVED() { return 2; } get LOADING() { return 3; } get DONE() { return 4; }
     get responseText() { return this._responseText; }
     get responseXML() { return null; }
     open(method, url, async = true) {
@@ -244,9 +246,13 @@
     for (const m of css.matchAll(/@font-face\s*\{([^}]*)\}/g)) {
       const body = m[1];
       const fam = /font-family\s*:\s*([^;]+)/i.exec(body);
-      const src = /src\s*:\s*([^;]+)/i.exec(body);
+      const src = [...body.matchAll(/src\s*:\s*([^;]+)/gi)].pop(); // the last src declaration wins, as in CSS
       if (!fam || !src) continue;
-      const url = /url\(\s*([^)]+?)\s*\)/i.exec(src[1]);
+      // The first TrueType/OpenType source (by format() or extension): the font loader reads no .eot, .svg or .woff,
+      // and Font Squirrel's rules list the .eot first.
+      const urls = [...src[1].matchAll(/url\(\s*([^)]+?)\s*\)\s*(?:format\(\s*["']?([^"')]+)["']?\s*\))?/gi)];
+      const ttf = (u) => /^(truetype|opentype)$/i.test(u[2] || "") || /\.(ttf|otf|ttc)(["'?#]|$)/i.test(u[1]);
+      const url = urls.find(ttf) || urls[0];
       if (!url) continue;
       const weight = /font-weight\s*:\s*([^;]+)/i.exec(body);
       const style = /font-style\s*:\s*([^;]+)/i.exec(body);
