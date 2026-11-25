@@ -197,7 +197,9 @@
     const drew = () => { if (owner) owner._painted = true; };
 
     // ---- state ----
-    let m = [1, 0, 0, 1, 0, 0];
+    // K: device pixels per canvas pixel (a page canvas drawn smaller than its size renders at the size it shows).
+    const K = target.scale || 1;
+    let m = [K, 0, 0, K, 0, 0];
     const stack = [];
     const st = { fillSrc: "#000", strokeSrc: "#000", alpha: 1, lineWidth: 1, font: "10px sans-serif", tint: null, gco: "source-over", align: "start", baseline: "alphabetic" };
     // With a tint ([r, g, b, a], straight), images and patterns draw as their shape in that color.
@@ -259,9 +261,9 @@
       translate(x, y) { mul([1, 0, 0, 1, x, y]); }, scale(x, y) { mul([x, 0, 0, y, 0, 0]); },
       rotate(r) { mul([Math.cos(r), Math.sin(r), -Math.sin(r), Math.cos(r), 0, 0]); },
       transform(a, b, c, d, e, f) { mul([a, b, c, d, e, f]); },
-      setTransform(a, b, c, d, e, f) { if (typeof a === "object" && a) ({ a, b, c, d, e, f } = a); m = [+a, +b, +c, +d, +e, +f]; },
-      resetTransform() { m = [1, 0, 0, 1, 0, 0]; },
-      getTransform() { return { a: m[0], b: m[1], c: m[2], d: m[3], e: m[4], f: m[5] }; },
+      setTransform(a, b, c, d, e, f) { if (typeof a === "object" && a) ({ a, b, c, d, e, f } = a); m = [K * a, K * b, K * c, K * d, K * e, K * f]; },
+      resetTransform() { m = [K, 0, 0, K, 0, 0]; },
+      getTransform() { return { a: m[0] / K, b: m[1] / K, c: m[2] / K, d: m[3] / K, e: m[4] / K, f: m[5] / K }; },
       createPattern(src) { return { kind: "pattern", src }; },
       // A pattern with its tile origin and drawn tile size in user space (no translate/scale around the fill).
       patternAt(src, ox, oy, tw, th) { return { kind: "pattern", src, ox, oy, tw, th }; },
@@ -404,11 +406,14 @@
     if (!E) return null;
     const gl = E.gl;
     let w = Math.max(1, el.width | 0), h = Math.max(1, el.height | 0);
+    // Below zoom 1 the canvas renders at its on-screen size (the page shows it scaled by the zoom): fewer pixels for
+    // the GPU to fill. Its context scales the page's coordinates; image data reads and writes resample.
+    const K = H.pageScale < 1 ? H.pageScale : 1, tw = () => Math.max(1, Math.ceil(w * K)), th = () => Math.max(1, Math.ceil(h * K));
     const tex = E.mkTex(), fbo = gl.createFramebuffer();
     const alloc = () => {
       E.flushPending();
       gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, tw(), th(), 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
       gl.disable(gl.SCISSOR_TEST);
@@ -417,7 +422,7 @@
       el._painted = true;
     };
     alloc();
-    const target = { fbo, page: false, canvas: el, w: () => w, h: () => h };
+    const target = { fbo, page: false, canvas: el, w: tw, h: th, scale: K };
     const ctx = makeCtx(target, el);
     const entry = { t: tex, w, h, ver: 0 };
     // width / height: as Canvas 2D, setting either (even to the same value) clears the canvas and resets its state.
@@ -428,18 +433,35 @@
         configurable: true,
       });
     }
+    // Canvas pixels <-> texture pixels (nearest) when K < 1.
+    const resample = (src, sw, sh, dw, dh) => {
+      const out = new Uint8Array(dw * dh * 4);
+      for (let y = 0; y < dh; y++) { const sy = Math.min(sh - 1, Math.floor((y * sh) / dh)); for (let x = 0; x < dw; x++) { const sx = Math.min(sw - 1, Math.floor((x * sw) / dw)), o = (y * dw + x) * 4, i = (sy * sw + sx) * 4; out[o] = src[i]; out[o + 1] = src[i + 1]; out[o + 2] = src[i + 2]; out[o + 3] = src[i + 3]; } }
+      return out;
+    };
     ctx.getImageData = (x, y, cw, ch) => {
       E.flushPending(); ctx.flush();
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); E.bound = undefined;
-      const px = new Uint8Array(cw * ch * 4);
-      gl.readPixels(x | 0, y | 0, cw | 0, ch | 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      cw |= 0; ch |= 0;
+      let px;
+      if (K === 1) { px = new Uint8Array(cw * ch * 4); gl.readPixels(x | 0, y | 0, cw, ch, gl.RGBA, gl.UNSIGNED_BYTE, px); }
+      else {
+        const rx = Math.floor(x * K), ry = Math.floor(y * K), rw = Math.max(1, Math.round(cw * K)), rh = Math.max(1, Math.round(ch * K));
+        const raw = new Uint8Array(rw * rh * 4); gl.readPixels(rx, ry, rw, rh, gl.RGBA, gl.UNSIGNED_BYTE, raw);
+        px = resample(raw, rw, rh, cw, ch);
+      }
       for (let i = 0; i < px.length; i += 4) { const a = px[i + 3]; if (a && a < 255) { px[i] = Math.min(255, (px[i] * 255) / a); px[i + 1] = Math.min(255, (px[i + 1] * 255) / a); px[i + 2] = Math.min(255, (px[i + 2] * 255) / a); } }
       const d = new g.ImageData(cw, ch); d.data.set(px); return d;
     };
     ctx.putImageData = (d, x, y) => {
       E.flushPending(); ctx.flush();
       gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, x | 0, y | 0, d.width, d.height, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(d.data.buffer, d.data.byteOffset, d.data.byteLength));
+      const src = new Uint8Array(d.data.buffer, d.data.byteOffset, d.data.byteLength);
+      if (K === 1) gl.texSubImage2D(gl.TEXTURE_2D, 0, x | 0, y | 0, d.width, d.height, gl.RGBA, gl.UNSIGNED_BYTE, src);
+      else {
+        const rw = Math.max(1, Math.round(d.width * K)), rh = Math.max(1, Math.round(d.height * K));
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, Math.floor(x * K), Math.floor(y * K), rw, rh, gl.RGBA, gl.UNSIGNED_BYTE, resample(src, d.width, d.height, rw, rh));
+      }
       el._painted = true;
     };
     ctx.createImageData = (cw, ch) => new g.ImageData(typeof cw === "object" ? cw.width : cw, typeof cw === "object" ? cw.height : ch);

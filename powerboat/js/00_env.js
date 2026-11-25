@@ -486,16 +486,19 @@
       this.id = ""; this.className = ""; this.innerHTML = ""; this.textContent = "";
       this.hidden = false;
       this.dataset = {};
+      // Attributes: a Map (a property per attribute name gave elements as many hidden classes as attribute mixes).
+      this._attrs = null;
+      const init = HTMLElement._init; if (init) init(this);
     }
     appendChild(c) { if (c.parentNode) c.parentNode.removeChild(c); c.parentNode = this; this.children.push(c); return c; }
     removeChild(c) { const i = this.children.indexOf(c); if (i >= 0) { this.children.splice(i, 1); c.parentNode = null; } return c; }
     insertBefore(c, ref) { const i = ref ? this.children.indexOf(ref) : -1; if (i < 0) return this.appendChild(c); c.parentNode = this; this.children.splice(i, 0, c); return c; }
     remove() { if (this.parentNode) this.parentNode.removeChild(this); }
     contains(c) { for (let n = c; n; n = n.parentNode) if (n === this) return true; return false; }
-    setAttribute(k, v) { this["_attr_" + k] = String(v); if (k === "id") this.id = String(v); }
-    getAttribute(k) { return this["_attr_" + k] ?? null; }
-    removeAttribute(k) { delete this["_attr_" + k]; }
-    hasAttribute(k) { return ("_attr_" + k) in this; }
+    setAttribute(k, v) { (this._attrs || (this._attrs = new Map())).set(String(k), String(v)); if (k === "id") this.id = String(v); }
+    getAttribute(k) { const a = this._attrs; return (a && a.get(String(k))) ?? null; }
+    removeAttribute(k) { if (this._attrs) this._attrs.delete(String(k)); }
+    hasAttribute(k) { return !!this._attrs && this._attrs.has(String(k)); }
     get firstChild() { return this.children[0] || null; }
     get lastChild() { return this.children[this.children.length - 1] || null; }
     // Elements without a size of their own (a game's parent <div>) fill the page, as blocks do:

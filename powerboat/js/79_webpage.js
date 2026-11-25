@@ -52,7 +52,8 @@
   EP.webkitMatchesSelector = EP.matches;
   EP.cloneNode = function (deep) {
     const c = doc.createElement(this.tagName.toLowerCase());
-    for (const k of Object.keys(this)) if (k.startsWith("_attr_") || k === "className" || k === "id") c[k] = this[k];
+    if (this._attrs) c._attrs = new Map(this._attrs);
+    c.className = this.className; c.id = this.id;
     c.textContent = this.textContent; c._nodeType = this._nodeType;
     if (deep) for (const ch of this.children) c.appendChild(ch.cloneNode(true));
     return c;
@@ -193,12 +194,25 @@
         } else top().appendChild(doc.createTextNode(decode(m[6])));
       }
     };
+    // Markup split as parse() reads it: its tags and comments (skeleton, text runs as  ) and its decoded text runs,
+    // one per text node parse() makes. null with raw-text elements (their contents are not tokens).
+    const RE_TOK = /<!--[\s\S]*?-->|<\/[a-zA-Z][\w:-]*\s*>|<([a-zA-Z][\w:-]*)(?:(?:\s+|(?<=["']))[^\s"'>\/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>|([^<]+|<)/g;
+    g.__powerboat.htmlSkeleton = (html) => {
+      let sk = "", m;
+      const texts = [];
+      RE_TOK.lastIndex = 0;
+      while ((m = RE_TOK.exec(html))) {
+        if (m[2] !== undefined) { sk += " "; texts.push(decode(m[2])); }
+        else { if (m[1] !== undefined && RAW.has(m[1].toLowerCase())) return null; sk += m[0]; }
+      }
+      return { sk, texts };
+    };
     const serialize = (n) => {
       if (n.nodeType === 3) return escText(n.textContent);
       if (n.nodeType === 8) return "<!--" + n.textContent + "-->";
       const name = n.tagName.toLowerCase();
       let s = "<" + name;
-      for (const k of Object.keys(n)) if (k.startsWith("_attr_")) s += " " + k.slice(6) + "=\"" + escAttr(n[k]) + "\"";
+      if (n._attrs) for (const [k, v] of n._attrs) s += " " + k + "=\"" + escAttr(v) + "\"";
       s += ">";
       if (VOID.has(name)) return s;
       return s + n.innerHTML + "</" + name + ">";
@@ -237,7 +251,7 @@
     Object.defineProperty(EP2, "attributes", {
       get() {
         const list = [];
-        for (const k of Object.keys(this)) if (k.startsWith("_attr_")) list.push({ name: k.slice(6), nodeName: k.slice(6), value: this[k], nodeValue: this[k], specified: true });
+        if (this._attrs) for (const [k, v] of this._attrs) list.push({ name: k, nodeName: k, value: v, nodeValue: v, specified: true });
         for (const a of list) list[a.name] = a;
         list.getNamedItem = (n) => list[String(n).toLowerCase()] || null;
         list.item = (i) => list[i] || null;

@@ -15,9 +15,12 @@
   const baseW = Object.getOwnPropertyDescriptor(g, "innerWidth").get, baseH = Object.getOwnPropertyDescriptor(g, "innerHeight").get;
   Object.defineProperty(g, "innerWidth", { get: () => Math.round(baseW() / zoom), configurable: true });
   Object.defineProperty(g, "innerHeight", { get: () => Math.round(baseH() / zoom), configurable: true });
-  // The page canvas is painted at pz device pixels per CSS pixel: the window scale when zooming in (crisp text),
-  // 1 when zooming out (the GPU scales the finished page down when presenting; no CPU resampling of every image).
-  const pz = zoom >= 1 ? zoom : 1;
+  // The page canvas is painted at pz device pixels per CSS pixel: the window scale when zooming in (crisp text) and,
+  // with WebGL, when zooming out (window-size passes: on the R36S at zoom 0.8, 0.64x the pixels to fill). Canvas 2D
+  // (CPU) zooming out paints at CSS size and the GPU scales the finished page down when presenting (no CPU
+  // resampling of every image).
+  const pz = zoom >= 1 || (ops.op_powerboat_env("POWERBOAT_HTML_GL") === "1" && !!H.makeGL) ? zoom : 1;
+  H.pageScale = pz;
   const pageW = () => Math.round(g.innerWidth * pz), pageH = () => Math.round(g.innerHeight * pz);
   __powerboat.pagePoint = (fx, fy) => [fx * g.innerWidth, fy * g.innerHeight];
   g.addEventListener("resize", () => H.touch());
@@ -1033,8 +1036,9 @@
   function drawCursor(cur) {
     const im = cur.sh.img;
     if (!(im.complete && im.naturalWidth)) return;
-    // Window pixels at the image's size: a page painted at CSS size (zoom below 1) is shrunk on present.
-    const k = cursorScale / Math.min(1, zoom);
+    // Window pixels at the image's size: the page is pz / zoom of the window's scale (smaller when painted at CSS
+    // size below zoom 1, then shrunk on present).
+    const k = (cursorScale * pz) / zoom;
     const w = im.naturalWidth * k, h = im.naturalHeight * k, x = Math.round(cur.x - cur.sh.hot[0] * k), y = Math.round(cur.y - cur.sh.hot[1] * k);
     if (ctx.begin) ctx.begin();
     ctx.save();

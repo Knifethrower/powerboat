@@ -163,8 +163,10 @@ pub fn op_gl_set_main_size(state: &mut OpState, w: u32, h: u32) {
     if w == 0 || h == 0 {
         return;
     }
-    // POWERBOAT_FORCE_FBO=1: render to the FBO even when the canvas is the window's size.
-    let force = std::env::var("POWERBOAT_FORCE_FBO").map(|v| v == "1").unwrap_or(false);
+    // POWERBOAT_FORCE_FBO=1: render to the FBO even when the canvas is the window's size. So does
+    // preserveDrawingBuffer: the window's back buffers do not keep their pixels from frame to frame (Mali hands
+    // out an older one), and a page that redraws only what changed needs them kept.
+    let force = app.preserve_drawing_buffer || std::env::var("POWERBOAT_FORCE_FBO").map(|v| v == "1").unwrap_or(false);
     let want = if w == app.width && h == app.height && !force { None } else { Some((w, h)) };
     if app.main_fbo.as_ref().map(|f| (f.w, f.h)) == want {
         return;

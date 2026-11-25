@@ -35,6 +35,19 @@
     H.dirtyLayout = H.dirtyPaint = true;
   };
   const EP = g.HTMLElement.prototype, DP = g.Document.prototype;
+  // Every element gets this layer's fields at once, in one order, so elements share a few hidden classes instead of
+  // one per mix of fields set later (a page had 862 elements in 113 maps: property loads in the paint walk went
+  // megamorphic). Inline handler properties too: the page sets them on some elements only.
+  g.HTMLElement._init = (el) => {
+    el._nodeType = undefined; el._text = undefined; el._sd = undefined; el._sdc = undefined; el._cs = undefined;
+    el._htmlSet = undefined; el._htmlSk = undefined; el._rawHTML = undefined; el._cnStr = undefined; el._cnSet = undefined;
+    el._before = undefined; el._after = undefined; el._beforeBox = undefined; el._afterBox = undefined; el._kids = undefined;
+    el._runs = undefined; el._L = undefined; el._rel = undefined; el._args = undefined; el._pre = undefined;
+    el._bGen = undefined; el._bR = undefined; el._static = undefined; el._staticItem = undefined; el._bgPlan = undefined;
+    el._lastText = undefined; el._painted = undefined; el._animStart = undefined;
+    el.onclick = null; el.onmouseover = null; el.onmouseout = null; el.onmousedown = null; el.onmouseup = null;
+    if (el.tagName === "CANVAS") { el._width = undefined; el._height = undefined; el._glc = undefined; el._ver = undefined; el._powerboatCanvasId = undefined; el._ctx2d = undefined; }
+  };
 
   // ---- colors -> [r, g, b, a] (0-255, a 0-1) --------------------------------------------------
   const NAMED = { transparent: [0, 0, 0, 0], black: [0, 0, 0, 1], white: [255, 255, 255, 1], red: [255, 0, 0, 1], green: [0, 128, 0, 1],
@@ -770,12 +783,28 @@
     if (k === "hidden" || (H.attrNames && H.attrNames.has(k))) H.restyle(this);
   };
   // innerHTML: the same markup set again (Cookie Clicker rewrites counters and lists every frame) changes
-  // nothing while nothing below the element changed since.
+  // nothing while nothing below the element changed since. Markup with the same tags and other text (a tooltip with
+  // live numbers, rewritten every frame) sets the text of the nodes made last time instead of building them again.
   {
-    const d = Object.getOwnPropertyDescriptor(EP, "innerHTML");
+    const d = Object.getOwnPropertyDescriptor(EP, "innerHTML"), skel = g.__powerboat.htmlSkeleton;
+    const textNodes = (n, out) => { for (const c of n.children) { if (c.nodeType === 3) out.push(c); else if (c.nodeType === 1) textNodes(c, out); } return out; };
     if (d && d.set) Object.defineProperty(EP, "innerHTML", {
       get: d.get,
-      set(v) { const s = v == null ? "" : String(v); if (this._htmlSet === s) return; d.set.call(this, s); this._htmlSet = s; },
+      set(v) {
+        const s = v == null ? "" : String(v), prev = this._htmlSet;
+        if (prev === s) return;
+        const k = skel(s);
+        if (prev !== undefined && k && k.sk === this._htmlSk) {
+          const ts = textNodes(this, []);
+          if (ts.length === k.texts.length) {
+            for (let i = 0; i < ts.length; i++) if (ts[i]._text !== k.texts[i]) ts[i].textContent = k.texts[i];
+            this._htmlSet = s;
+            return;
+          }
+        }
+        d.set.call(this, s);
+        this._htmlSet = s; this._htmlSk = k ? k.sk : undefined;
+      },
       configurable: true,
     });
   }
